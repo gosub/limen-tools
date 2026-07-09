@@ -12,27 +12,43 @@ zoom-to-fit, quit). See the
 [module documentation](https://github.com/gosub/forsitan-modulare/blob/master-v2/doc/limen.md)
 for the full protocol reference.
 
+## What's in the box
+
+| tool | what it is |
+|------|------------|
+| [`cmd/limen-cli/`](cmd/limen-cli/) | command-line client (Go, single static binary) |
+| [`cmd/limen-mcp/`](cmd/limen-mcp/) | MCP server: use limen as tools from Claude or any MCP client |
+| [`limen/`](limen/) | Go client library used by both binaries |
+| [`python/limen.py`](python/limen.py) | Python client library, dependency-free |
+| [`patches/limen.vcv`](patches/limen.vcv) | starter patch: one limen module, server already enabled |
+| [`.claude/skills/limen/`](.claude/skills/limen/SKILL.md) | Claude skill teaching an LLM to drive Rack through limen |
+
+Prebuilt `limen-cli` and `limen-mcp` binaries for Linux (amd64), Windows
+(amd64) and macOS (amd64/arm64) are attached to
+[releases](https://github.com/gosub/limen-tools/releases); or build from
+source with `go build ./cmd/limen-cli ./cmd/limen-mcp` (Go 1.21+), or
+install with `go install github.com/gosub/limen-tools/cmd/limen-cli@latest`.
+
+## Quickstart
+
+1. Start Rack in a controllable state. Either open the bundled starter
+   patch, which contains a single limen module with the server enabled:
+
+   ```bash
+   Rack patches/limen.vcv
+   ```
+
+   or add a **limen** module to any patch and enable its server from the
+   right-click menu (the green LED lights up when it is listening).
+
+2. Talk to it:
+
+   ```bash
+   limen-cli hello
+   limen-cli modules
+   ```
+
 ## limen-cli
-
-A command-line client written in Go (`cmd/limen-cli/`), single static
-binary, no runtime dependency. The reusable protocol client lives in the
-`limen/` Go package (`github.com/gosub/limen-tools/limen`).
-
-### Get a binary
-
-Prebuilt binaries for Linux (amd64), Windows (amd64) and macOS
-(amd64/arm64) are attached to
-[releases](https://github.com/gosub/limen-tools/releases).
-
-### Or build from source
-
-```bash
-go build ./cmd/limen-cli
-# or install straight to $GOBIN (defaults to ~/go/bin)
-go install github.com/gosub/limen-tools/cmd/limen-cli@latest
-```
-
-### Usage
 
 ```
 limen-cli [--port N] [--host H] [--json] <command> [args]
@@ -62,12 +78,105 @@ limen-cli [--port N] [--host H] [--json] <command> [args]
 Module IDs and cable IDs can be given as unique prefixes instead of the full
 number. `--json` prints the raw JSON response (pipe to `jq`).
 
-## Quickstart
+A patch built from the terminal:
 
-1. Add a **limen** module to your patch in VCV Rack and enable its server
-   from the right-click menu.
-2. `limen-cli hello`
-3. `limen-cli modules`
+```bash
+VCO=$(limen-cli add Fundamental VCO)
+VCA=$(limen-cli add Fundamental VCA)
+OUT=$(limen-cli add Core AudioInterface2)
+limen-cli ports $VCA                 # find port indices; 2 = channel 1 audio in
+limen-cli connect $VCO:0 $VCA:2      # sine → VCA channel 1 in
+limen-cli connect $VCA:0 $OUT:0      # VCA channel 1 → audio out L
+limen-cli set $VCO 2 -12             # frequency param down an octave
+limen-cli zoom
+```
+
+## limen-mcp
+
+An [MCP](https://modelcontextprotocol.io) stdio server that exposes every
+limen protocol command as a tool, so MCP clients (Claude Code, Claude
+Desktop, editors, agents) can inspect and modify a live Rack patch.
+
+```
+limen-mcp [--host H] [--port N]     # or LIMEN_HOST / LIMEN_PORT env vars
+```
+
+Register it with your MCP client; for Claude Code:
+
+```bash
+claude mcp add limen -- /path/to/limen-mcp
+```
+
+or in a `.mcp.json` / Claude Desktop config:
+
+```json
+{
+  "mcpServers": {
+    "limen": {
+      "command": "/path/to/limen-mcp",
+      "args": ["--port", "7000"]
+    }
+  }
+}
+```
+
+Then ask the model to look at the rack: it gets `list_modules`,
+`list_ports`, `set_param`, `add_cable` and the rest as typed tools. Each
+tool call opens its own short-lived TCP connection, so the single-client
+limen server stays free between calls.
+
+## Go library
+
+Both binaries are built on `github.com/gosub/limen-tools/limen`, which you
+can use directly:
+
+```go
+import "github.com/gosub/limen-tools/limen"
+
+c, err := limen.Dial(limen.DefaultHost, limen.DefaultPort)
+if err != nil { ... }
+defer c.Close()
+
+mods, err := c.ListModules("")           // typed helpers
+var result any
+err = c.Call("get_module_info",          // or any raw command
+    map[string]any{"id": mods[0].ID}, &result)
+```
+
+## Python library
+
+`python/limen.py` is a single-file, dependency-free client (Python 3.6+).
+Copy it next to your script or add `python/` to `PYTHONPATH`:
+
+```python
+from limen import Limen
+
+with Limen() as rack:                    # Limen(host=..., port=...)
+    print(rack.hello())
+    vco = rack.add_module("Fundamental", "VCO")
+    rack.set_param(vco, 2, -12.0)        # module, param id, value
+    for m in rack.list_modules():
+        print(m["id"], m["name"])
+```
+
+One method per protocol command (`list_modules`, `get_module_info`,
+`add_cable`, ...); server-side errors raise `LimenError`.
+
+## Claude skill
+
+`.claude/skills/limen/SKILL.md` teaches Claude (Code) how to drive Rack
+through limen: the protocol, the standard workflows (orient, build a patch,
+screenshot flow) and the gotchas. Working inside a checkout of this repo,
+Claude Code picks it up automatically; to use it elsewhere, copy the
+`limen` directory into your project's `.claude/skills/` or into
+`~/.claude/skills/`.
+
+## Starter patch
+
+`patches/limen.vcv` contains exactly one limen module with the server
+enabled on port 7000. `Rack patches/limen.vcv` boots straight into a
+controllable, empty rack: the natural starting point for scripted patch
+building, automated testing, or letting an LLM loose on Rack.
 
 ## License
 
