@@ -21,7 +21,7 @@ for the full protocol reference.
 | [`limen/`](limen/) | Go client library used by both binaries |
 | [`python/limen.py`](python/limen.py) | Python client library, dependency-free |
 | [`patches/limen.vcv`](patches/limen.vcv) | starter patch: one limen module, server already enabled |
-| [`.claude/skills/limen/`](.claude/skills/limen/SKILL.md) | Claude skill teaching an LLM to drive Rack through limen |
+| [`skills/limen/`](skills/limen/SKILL.md) | Claude skill teaching an LLM to drive Rack through limen |
 
 Prebuilt `limen-cli` and `limen-mcp` binaries for Linux (amd64), Windows
 (amd64) and macOS (amd64/arm64) are attached to
@@ -164,12 +164,12 @@ One method per protocol command (`list_modules`, `get_module_info`,
 
 ## Claude skill
 
-`.claude/skills/limen/SKILL.md` teaches Claude (Code) how to drive Rack
-through limen: the protocol, the standard workflows (orient, build a patch,
-screenshot flow) and the gotchas. Working inside a checkout of this repo,
-Claude Code picks it up automatically; to use it elsewhere, copy the
-`limen` directory into your project's `.claude/skills/` or into
-`~/.claude/skills/`.
+[`skills/limen/SKILL.md`](skills/limen/SKILL.md) teaches Claude (Code) how
+to drive Rack through limen: the protocol, the standard workflows (orient,
+build a patch, screenshot flow) and the gotchas. Working inside a checkout
+of this repo, Claude Code picks it up automatically (via the
+`.claude/skills/limen` symlink); to use it elsewhere, copy `skills/limen/`
+into your project's `.claude/skills/` or into `~/.claude/skills/`.
 
 ## Starter patch
 
