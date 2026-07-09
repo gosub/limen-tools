@@ -14,30 +14,22 @@ for the full protocol reference.
 
 ## limen-cli
 
-A command-line client, in two flavors with identical interfaces:
-
-- **C** (`limen-cli/limen-cli.c`) — compiled, no runtime dependency;
-  Linux, macOS and Windows
-- **Python** (`limen-cli/limen-cli.py`) — no compilation needed;
-  Python 3.6+, no third-party packages
+A command-line client written in Go (`cmd/limen-cli/`), single static
+binary, no runtime dependency. The reusable protocol client lives in the
+`limen/` Go package (`github.com/gosub/limen-tools/limen`).
 
 ### Get a binary
 
-Prebuilt binaries for Linux (x64), Windows (x64) and macOS (universal) are
-attached to [releases](https://github.com/gosub/limen-tools/releases).
+Prebuilt binaries for Linux (amd64), Windows (amd64) and macOS
+(amd64/arm64) are attached to
+[releases](https://github.com/gosub/limen-tools/releases).
 
 ### Or build from source
 
 ```bash
-cd limen-cli && make
-# optionally install to ~/.local/bin
-make install
-```
-
-Cross-compile for Windows:
-
-```bash
-make CC=x86_64-w64-mingw32-gcc EXE=.exe LDLIBS=-lws2_32
+go build ./cmd/limen-cli
+# or install straight to $GOBIN (defaults to ~/go/bin)
+go install github.com/gosub/limen-tools/cmd/limen-cli@latest
 ```
 
 ### Usage
