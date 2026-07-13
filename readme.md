@@ -29,6 +29,22 @@ Prebuilt `limen-cli` and `limen-mcp` binaries for Linux (amd64), Windows
 source with `go build ./cmd/limen-cli ./cmd/limen-mcp` (Go 1.21+), or
 install with `go install github.com/gosub/limen-tools/cmd/limen-cli@latest`.
 
+## Compatibility
+
+The wire protocol is versioned by a single integer, reported by the `hello`
+command and bumped only on breaking changes (new commands and new response
+fields do not bump it). Every client in this repo checks it when it
+connects and refuses to talk to a server speaking a different version,
+with an error saying which side to update.
+
+| limen-tools | limen protocol | forsitan modulare |
+|-------------|----------------|-------------------|
+| v1.0.x      | 1              | ≥ 2.6.15          |
+
+forsitan 2.3.1 – 2.6.14 also speak protocol 1 but predate the
+`get_module_info` command used by `limen-cli info` and the MCP
+`get_module_info` tool; everything else works.
+
 ## Quickstart
 
 1. Start Rack in a controllable state. Either open the bundled starter
@@ -160,7 +176,8 @@ with Limen() as rack:                    # Limen(host=..., port=...)
 ```
 
 One method per protocol command (`list_modules`, `get_module_info`,
-`add_cable`, ...); server-side errors raise `LimenError`.
+`add_cable`, ...); server-side errors raise `LimenError`. The constructor
+verifies the server's protocol version (pass `check=False` to skip).
 
 ## Claude skill
 
