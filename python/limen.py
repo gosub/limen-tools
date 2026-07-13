@@ -24,6 +24,10 @@ import socket
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7000
 
+# The limen wire protocol version this library speaks; the server reports
+# its own in the hello response, bumped only on breaking changes.
+PROTOCOL = 1
+
 
 class LimenError(Exception):
     """A server-side error response ({"ok": false, "error": ...})."""
@@ -36,9 +40,12 @@ class Limen:
     close (or use the instance as a context manager).
     """
 
-    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT, timeout=5.0):
+    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT, timeout=5.0,
+                 check=True):
         self._sock = socket.create_connection((host, port), timeout=timeout)
         self._buf = b""
+        if check:
+            self.check_protocol()
 
     def close(self):
         if self._sock is not None:
@@ -77,6 +84,17 @@ class Limen:
     def hello(self):
         """Protocol version and supported commands."""
         return self.call("hello")
+
+    def check_protocol(self):
+        """Raise LimenError unless the server speaks protocol PROTOCOL."""
+        server = self.hello().get("protocol")
+        if server != PROTOCOL:
+            hint = ("update limen.py"
+                    if isinstance(server, int) and server > PROTOCOL
+                    else "update the forsitan plugin")
+            raise LimenError(
+                "protocol mismatch: server speaks limen protocol %s, "
+                "this library speaks %s (%s)" % (server, PROTOCOL, hint))
 
     def list_plugins(self):
         """All plugins loaded in Rack: [{slug, name, version}]."""
