@@ -33,13 +33,13 @@ install with `go install github.com/gosub/limen-tools/cmd/limen-cli@latest`.
 
 The wire protocol is versioned by a single integer, reported by the `hello`
 command and bumped only on breaking changes (new commands and new response
-fields do not bump it). Every client in this repo checks it when it
-connects and refuses to talk to a server speaking a different version,
-with an error saying which side to update.
+fields do not bump it). Every client in this repo (since v1.1.0) checks
+it when it connects and refuses to talk to a server speaking a different
+version, with an error saying which side to update.
 
 | limen-tools | limen protocol | forsitan modulare |
 |-------------|----------------|-------------------|
-| v1.0.x      | 1              | ≥ 2.6.15          |
+| v1.x        | 1              | ≥ 2.6.15          |
 
 Every forsitan release since 2.3.1 speaks protocol 1, including the
 current 2.7.0. Releases 2.3.1 – 2.6.14 predate the `get_module_info`
