@@ -41,9 +41,10 @@ with an error saying which side to update.
 |-------------|----------------|-------------------|
 | v1.0.x      | 1              | ≥ 2.6.15          |
 
-forsitan 2.3.1 – 2.6.14 also speak protocol 1 but predate the
-`get_module_info` command used by `limen-cli info` and the MCP
-`get_module_info` tool; everything else works.
+Every forsitan release since 2.3.1 speaks protocol 1, including the
+current 2.7.0. Releases 2.3.1 – 2.6.14 predate the `get_module_info`
+command used by `limen-cli info` and the MCP `get_module_info` tool;
+everything else works with them too.
 
 ## Quickstart
 
