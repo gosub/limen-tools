@@ -369,6 +369,13 @@ donetc:
 	}
 	defer c.Close()
 
+	// The hello command is exempt so a mismatched server can still be inspected.
+	if cmd != "hello" {
+		if _, err := c.CheckProtocol(); err != nil {
+			die("%v", err)
+		}
+	}
+
 	switch cmd {
 	case "hello":
 		cmdHello(c)

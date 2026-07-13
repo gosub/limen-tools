@@ -24,6 +24,10 @@ const serverVersion = "1.0.0"
 var (
 	optHost string
 	optPort int
+
+	// protocolOK is set after the first successful protocol check, so the
+	// per-call hello round-trip happens only once per server process.
+	protocolOK bool
 )
 
 // ── tool table ───────────────────────────────────────────────────────────────
@@ -199,6 +203,15 @@ func handleToolsCall(req *rpcRequest) {
 		return
 	}
 	defer c.Close()
+
+	// The hello tool is exempt so a mismatched server can still be inspected.
+	if !protocolOK && t.Name != "hello" {
+		if _, err := c.CheckProtocol(); err != nil {
+			reply(req.ID, textResult(fmt.Sprintf("limen %v", err), true))
+			return
+		}
+		protocolOK = true
+	}
 
 	resp, err := c.Do(request)
 	if err != nil {

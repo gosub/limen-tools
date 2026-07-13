@@ -19,6 +19,11 @@ const (
 	DefaultPort = 7000
 )
 
+// SupportedProtocol is the limen wire protocol version this library speaks.
+// The server reports its own version in the hello response; it is bumped
+// only on breaking changes.
+const SupportedProtocol = 1
+
 // Response is one reply line from the server.
 type Response struct {
 	OK     bool            `json:"ok"`
@@ -91,6 +96,39 @@ func (c *Client) Call(cmd string, fields map[string]any, out any) error {
 		return json.Unmarshal(resp.Result, out)
 	}
 	return nil
+}
+
+// Hello is the response of the hello command.
+type Hello struct {
+	Protocol int      `json:"protocol"`
+	Commands []string `json:"commands"`
+}
+
+// Hello returns the server's protocol version and supported commands.
+func (c *Client) Hello() (*Hello, error) {
+	var h Hello
+	if err := c.Call("hello", nil, &h); err != nil {
+		return nil, err
+	}
+	return &h, nil
+}
+
+// CheckProtocol calls hello and fails unless the server speaks
+// SupportedProtocol. The error says which side needs updating.
+func (c *Client) CheckProtocol() (*Hello, error) {
+	h, err := c.Hello()
+	if err != nil {
+		return nil, fmt.Errorf("hello failed: %w", err)
+	}
+	if h.Protocol != SupportedProtocol {
+		hint := "update the forsitan plugin"
+		if h.Protocol > SupportedProtocol {
+			hint = "update limen-tools"
+		}
+		return h, fmt.Errorf("protocol mismatch: server speaks limen protocol %d, this client speaks %d (%s)",
+			h.Protocol, SupportedProtocol, hint)
+	}
+	return h, nil
 }
 
 // Module is one entry of list_modules / get_module.
