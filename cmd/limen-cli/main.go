@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -32,13 +33,19 @@ commands:
   set <module-id> <param-id> <value>           set a parameter value
   get <module-id>                              get module detail
   info <module-id>                             module info (description, tags, plugin, links)
-  add <plugin-slug> <model-slug>               add a module to the patch
+  add <plugin-slug> <model-slug> [<x> <y> [mode]]  add a module, at a grid position if given
   rm <module-id>                               remove a module from the patch
+  move <module-id> <x> <y> [mode]              move a module to grid column x, row y
   connect <out-mod>:<out-port> <in-mod>:<in-port>  connect two ports
   disconnect <cable-id>                        remove a cable
+  save [<path>]                                save the patch (to its own file, or a copy)
+  saveas <path>                                save the patch and adopt that path
+  batch [-k] [<file>]                          run one JSON request per line as a batch
   fullscreen on|off                            enter or leave fullscreen
   zoom                                         zoom/center the view to fit all modules (F4)
   quit                                         quit VCV Rack
+
+placement mode (add, move): nearest (default), force, squeeze, strict
 
 options:
   --port N    TCP port (default: 7000)
@@ -148,13 +155,14 @@ func cmdModels(c *limen.Client, pluginSlug string) {
 }
 
 func printModuleHeader() {
-	fmt.Printf("%-22s  %-12s  %-16s  %-16s  %3s  %3s  %3s\n",
-		"id", "plugin", "model", "name", "par", "in", "out")
+	fmt.Printf("%-22s  %-12s  %-16s  %-16s  %3s  %3s  %3s  %5s  %3s  %3s\n",
+		"id", "plugin", "model", "name", "par", "in", "out", "x", "y", "hp")
 }
 
 func printModule(m limen.Module) {
-	fmt.Printf("%-22d  %-12s  %-16s  %-16s  %3d  %3d  %3d\n",
-		m.ID, m.Plugin, m.Model, m.Name, m.NumParams, m.NumInputs, m.NumOutputs)
+	fmt.Printf("%-22d  %-12s  %-16s  %-16s  %3d  %3d  %3d  %5d  %3d  %3d\n",
+		m.ID, m.Plugin, m.Model, m.Name, m.NumParams, m.NumInputs, m.NumOutputs,
+		m.Pos.X, m.Pos.Y, m.HP)
 }
 
 func cmdModules(c *limen.Client, pluginSlug string) {
@@ -325,6 +333,114 @@ func cmdCables(c *limen.Client, moduleID int64, verbose bool) {
 	}
 }
 
+func parseInt(what, s string) int {
+	v, err := strconv.Atoi(s)
+	if err != nil {
+		die("invalid %s: %s", what, s)
+	}
+	return v
+}
+
+// placement turns the trailing "<x> <y> [mode]" of add and move into request
+// fields. Both coordinates or neither.
+func placement(args []string) map[string]any {
+	fields := map[string]any{}
+	if len(args) == 1 {
+		die("x and y go together, or leave both out")
+	}
+	if len(args) >= 2 {
+		fields["x"] = parseInt("x", args[0])
+		fields["y"] = parseInt("y", args[1])
+	}
+	if len(args) >= 3 {
+		fields["mode"] = args[2]
+	}
+	return fields
+}
+
+func cmdMove(c *limen.Client, id int64, args []string) {
+	fields := placement(args)
+	fields["id"] = id
+	var result struct {
+		Pos limen.Pos `json:"pos"`
+	}
+	decode(call(c, "move_module", fields), &result)
+	fmt.Printf("%d %d\n", result.Pos.X, result.Pos.Y)
+}
+
+func cmdSave(c *limen.Client, cmd string, path string) {
+	fields := map[string]any{}
+	if path != "" {
+		fields["path"] = path
+	}
+	var result struct {
+		Path string `json:"path"`
+	}
+	decode(call(c, cmd, fields), &result)
+	fmt.Println(result.Path)
+}
+
+// cmdBatch sends one JSON request object per line as a single batch. Blank
+// lines and # comments are skipped, so a batch file can be commented.
+func cmdBatch(c *limen.Client, path string, keepGoing bool) {
+	in := os.Stdin
+	if path != "" && path != "-" {
+		f, err := os.Open(path)
+		if err != nil {
+			die("%v", err)
+		}
+		defer f.Close()
+		in = f
+	}
+
+	var cmds []map[string]any
+	scanner := bufio.NewScanner(in)
+	scanner.Buffer(make([]byte, 0, 1<<20), 1<<24)
+	for line := 1; scanner.Scan(); line++ {
+		text := strings.TrimSpace(scanner.Text())
+		if text == "" || strings.HasPrefix(text, "#") {
+			continue
+		}
+		// UseNumber so module ids keep their exact int64 value.
+		dec := json.NewDecoder(strings.NewReader(text))
+		dec.UseNumber()
+		var cmd map[string]any
+		if err := dec.Decode(&cmd); err != nil {
+			die("line %d: %v", line, err)
+		}
+		cmds = append(cmds, cmd)
+	}
+	if err := scanner.Err(); err != nil {
+		die("%v", err)
+	}
+	if len(cmds) == 0 {
+		die("no commands to run")
+	}
+
+	var result limen.BatchResponse
+	decode(call(c, "batch", map[string]any{
+		"commands":    cmds,
+		"stopOnError": !keepGoing,
+	}), &result)
+
+	for i, r := range result.Results {
+		if r.OK {
+			out := string(r.Result)
+			if out == "" || out == "null" {
+				out = "ok"
+			}
+			fmt.Printf("%3d  ok     %s\n", i, out)
+		} else {
+			fmt.Printf("%3d  error  %s\n", i, r.Error)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "%d of %d commands ran, %d failed\n",
+		result.Count, len(cmds), result.Failed)
+	if result.Failed > 0 {
+		os.Exit(1)
+	}
+}
+
 func printResultID(raw json.RawMessage) {
 	var result struct {
 		ID int64 `json:"id"`
@@ -446,7 +562,9 @@ donetc:
 		if len(args) < 2 {
 			die("add requires plugin-slug model-slug")
 		}
-		printResultID(call(c, "add_module", map[string]any{"plugin": args[0], "model": args[1]}))
+		fields := placement(args[2:])
+		fields["plugin"], fields["model"] = args[0], args[1]
+		printResultID(call(c, "add_module", fields))
 	case "rm":
 		if len(args) < 1 {
 			die("rm requires module-id")
@@ -454,6 +572,11 @@ donetc:
 		id := resolveModule(c, args[0])
 		call(c, "remove_module", map[string]any{"id": id})
 		fmt.Println("ok")
+	case "move":
+		if len(args) < 3 {
+			die("move requires module-id x y")
+		}
+		cmdMove(c, resolveModule(c, args[0]), args[1:])
 	case "connect":
 		if len(args) < 2 {
 			die("connect requires <out-mod>:<out-port> <in-mod>:<in-port>")
@@ -474,6 +597,28 @@ donetc:
 		}
 		call(c, "remove_cable", map[string]any{"id": id})
 		fmt.Println("ok")
+	case "save":
+		path := ""
+		if len(args) > 0 {
+			path = args[0]
+		}
+		cmdSave(c, "save_patch", path)
+	case "saveas":
+		if len(args) < 1 {
+			die("saveas requires a path")
+		}
+		cmdSave(c, "save_patch_as", args[0])
+	case "batch":
+		keepGoing := false
+		path := ""
+		for _, a := range args {
+			if a == "-k" {
+				keepGoing = true
+			} else {
+				path = a
+			}
+		}
+		cmdBatch(c, path, keepGoing)
 	case "fullscreen":
 		if len(args) < 1 || (args[0] != "on" && args[0] != "off") {
 			die("fullscreen requires on|off")
