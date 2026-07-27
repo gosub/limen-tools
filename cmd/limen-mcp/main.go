@@ -35,6 +35,8 @@ var (
 type property struct {
 	Type        string `json:"type"`
 	Description string `json:"description"`
+	// Items describes an array property's elements; empty for other types.
+	Items map[string]any `json:"items,omitempty"`
 }
 
 type schema struct {
@@ -49,11 +51,19 @@ type tool struct {
 	InputSchema schema `json:"inputSchema"`
 }
 
+func p(typ, description string) property {
+	return property{Type: typ, Description: description}
+}
+
 var (
-	propID     = property{"integer", "module id (from list_modules)"}
-	propParam  = property{"integer", "parameter id (from list_params)"}
-	propPlugin = property{"string", "plugin slug"}
-	propModel  = property{"string", "model slug"}
+	propID     = p("integer", "module id (from list_modules)")
+	propParam  = p("integer", "parameter id (from list_params)")
+	propPlugin = p("string", "plugin slug")
+	propModel  = p("string", "model slug")
+	propX      = p("integer", "grid column in HP, counted from Rack's origin")
+	propY      = p("integer", "grid row")
+	propMode   = p("string", "what to do if the position is taken: nearest (default, moves to the closest free spot), force (pushes the row aside), squeeze, or strict (fails rather than land elsewhere)")
+	propPath   = p("string", "path of the .vcv patch file")
 )
 
 func s(props map[string]property, required ...string) schema {
@@ -69,20 +79,27 @@ var tools = []tool{
 	{"hello", "Protocol version and the list of commands supported by the running limen module. Call first to check the connection.", s(nil)},
 	{"list_plugins", "List all plugins loaded in Rack.", s(nil)},
 	{"list_models", "List all module models available in Rack, optionally filtered by plugin slug. Use to find plugin/model slugs for add_module.", s(map[string]property{"plugin": propPlugin})},
-	{"list_modules", "List modules currently in the patch, with their ids, optionally filtered by plugin slug.", s(map[string]property{"plugin": propPlugin})},
+	{"list_modules", "List modules currently in the patch: ids, and (protocol 2) each module's grid position and width in HP.", s(map[string]property{"plugin": propPlugin})},
 	{"get_module", "Get one module's summary (plugin, model, name, number of params/inputs/outputs).", s(map[string]property{"id": propID}, "id")},
 	{"get_module_info", "Get a module's full metadata as shown in Rack's right-click Info menu: description, tags, and the plugin's brand, version, license, author and links.", s(map[string]property{"id": propID}, "id")},
 	{"list_ports", "List a module's input and output port names with their indices. Needed before add_cable.", s(map[string]property{"id": propID}, "id")},
 	{"list_params", "List a module's parameters: id, current value, name, min, max, unit.", s(map[string]property{"id": propID}, "id")},
 	{"get_param", "Get one parameter's current value and metadata.", s(map[string]property{"id": propID, "param": propParam}, "id", "param")},
-	{"set_param", "Set a parameter value (clamped to the parameter's range by Rack).", s(map[string]property{"id": propID, "param": propParam, "value": {"number", "new value, within the param's min/max"}}, "id", "param", "value")},
-	{"add_module", "Add a module to the patch; returns its new id. It is placed automatically near existing modules.", s(map[string]property{"plugin": propPlugin, "model": propModel}, "plugin", "model")},
+	{"set_param", "Set a parameter value (clamped to the parameter's range by Rack).", s(map[string]property{"id": propID, "param": propParam, "value": p("number", "new value, within the param's min/max")}, "id", "param", "value")},
+	{"add_module", "Add a module to the patch; returns its id, grid position and width in HP. Give x and y to place it (a row is laid out by adding each module's hp to x); without them it lands next to an existing module.", s(map[string]property{"plugin": propPlugin, "model": propModel, "x": propX, "y": propY, "mode": propMode}, "plugin", "model")},
 	{"remove_module", "Remove a module from the patch.", s(map[string]property{"id": propID}, "id")},
-	{"list_cables", "List cables in the patch, optionally filtered by module id; verbose adds module and port names.", s(map[string]property{"id": {"integer", "only cables touching this module id"}, "verbose": {"boolean", "include module and port names"}})},
-	{"add_cable", "Connect a module's output port to another module's input port; returns the cable id. Port indices come from list_ports.", s(map[string]property{"outputModule": {"integer", "source module id"}, "outputPort": {"integer", "source output port index"}, "inputModule": {"integer", "destination module id"}, "inputPort": {"integer", "destination input port index"}}, "outputModule", "outputPort", "inputModule", "inputPort")},
-	{"remove_cable", "Remove a cable from the patch.", s(map[string]property{"id": {"integer", "cable id (from list_cables)"}}, "id")},
-	{"set_fullscreen", "Enter or leave fullscreen; the result reflects the resulting state.", s(map[string]property{"on": {"boolean", "true for fullscreen"}}, "on")},
+	{"move_module", "Move a module to a grid position; returns the position it actually reached, which differs from the one asked for unless mode is strict.", s(map[string]property{"id": propID, "x": propX, "y": propY, "mode": propMode}, "id", "x", "y")},
+	{"list_cables", "List cables in the patch, optionally filtered by module id; verbose adds module and port names.", s(map[string]property{"id": p("integer", "only cables touching this module id"), "verbose": p("boolean", "include module and port names")})},
+	{"add_cable", "Connect a module's output port to another module's input port; returns the cable id. Port indices come from list_ports.", s(map[string]property{"outputModule": p("integer", "source module id"), "outputPort": p("integer", "source output port index"), "inputModule": p("integer", "destination module id"), "inputPort": p("integer", "destination input port index")}, "outputModule", "outputPort", "inputModule", "inputPort")},
+	{"remove_cable", "Remove a cable from the patch.", s(map[string]property{"id": p("integer", "cable id (from list_cables)")}, "id")},
+	{"set_fullscreen", "Enter or leave fullscreen; the result reflects the resulting state.", s(map[string]property{"on": p("boolean", "true for fullscreen")}, "on")},
 	{"zoom_to_modules", "Zoom and center the view to fit all modules (Rack's F4). The fit settles over a few frames; wait ~0.5s before capturing a screenshot.", s(nil)},
+	{"save_patch", "Save the patch to the file it was opened from, or to path as a copy. Overwrites without asking: confirm the path with the user first.", s(map[string]property{"path": propPath})},
+	{"save_patch_as", "Save the patch to path and make it the patch's file, as Rack's Save as does. Overwrites without asking: confirm the path with the user first.", s(map[string]property{"path": propPath}, "path")},
+	{"batch", "Run a sequence of limen commands in one call. Each element of commands is a request object like {\"cmd\": \"add_module\", \"plugin\": \"Fundamental\", \"model\": \"VCO\", \"x\": 0, \"y\": 0}, and the result holds each command's own reply in order. It stops at the first failure by default (stopOnError), and what already ran is not undone. Prefer this over many single calls when building a patch.", s(map[string]property{
+		"commands":    {Type: "array", Description: "limen request objects, run in order", Items: map[string]any{"type": "object"}},
+		"stopOnError": p("boolean", "stop at the first failing command (default true)"),
+	}, "commands")},
 	{"quit", "Quit VCV Rack without a save prompt. Confirm with the user before calling.", s(nil)},
 }
 
