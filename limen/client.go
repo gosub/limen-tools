@@ -19,10 +19,18 @@ const (
 	DefaultPort = 7000
 )
 
-// SupportedProtocol is the limen wire protocol version this library speaks.
-// The server reports its own version in the hello response; it is bumped
-// only on breaking changes.
-const SupportedProtocol = 1
+// The limen wire protocol versions this library speaks. The server reports
+// its own in the hello response.
+//
+// SupportedProtocol is the newest this library knows about, MinProtocol the
+// oldest it still works with. Protocol 2 only added commands and response
+// fields, so a client built for it still drives a protocol 1 server; the
+// version 2 commands (move_module, save_patch, save_patch_as, batch) are the
+// only thing missing there, and they come back as "unknown cmd".
+const (
+	SupportedProtocol = 2
+	MinProtocol       = 1
+)
 
 // Response is one reply line from the server.
 type Response struct {
@@ -113,22 +121,29 @@ func (c *Client) Hello() (*Hello, error) {
 	return &h, nil
 }
 
-// CheckProtocol calls hello and fails unless the server speaks
-// SupportedProtocol. The error says which side needs updating.
+// CheckProtocol calls hello and fails unless the server's protocol is one
+// this library speaks. The error says which side needs updating.
 func (c *Client) CheckProtocol() (*Hello, error) {
 	h, err := c.Hello()
 	if err != nil {
 		return nil, fmt.Errorf("hello failed: %w", err)
 	}
-	if h.Protocol != SupportedProtocol {
+	if h.Protocol < MinProtocol || h.Protocol > SupportedProtocol {
 		hint := "update the forsitan plugin"
 		if h.Protocol > SupportedProtocol {
 			hint = "update limen-tools"
 		}
-		return h, fmt.Errorf("protocol mismatch: server speaks limen protocol %d, this client speaks %d (%s)",
-			h.Protocol, SupportedProtocol, hint)
+		return h, fmt.Errorf("protocol mismatch: server speaks limen protocol %d, this client speaks %d-%d (%s)",
+			h.Protocol, MinProtocol, SupportedProtocol, hint)
 	}
 	return h, nil
+}
+
+// Pos is a position in Rack grid coordinates: X in HP columns, Y in rack
+// rows. Zero for a protocol 1 server, which does not report positions.
+type Pos struct {
+	X int `json:"x"`
+	Y int `json:"y"`
 }
 
 // Module is one entry of list_modules / get_module.
@@ -140,6 +155,8 @@ type Module struct {
 	NumParams  int    `json:"numParams"`
 	NumInputs  int    `json:"numInputs"`
 	NumOutputs int    `json:"numOutputs"`
+	Pos        Pos    `json:"pos"` // protocol 2
+	HP         int    `json:"hp"`  // width in HP columns, protocol 2
 }
 
 // Cable is one entry of list_cables.
@@ -178,6 +195,37 @@ func (c *Client) ListCables(moduleFilter int64, verbose bool) ([]Cable, error) {
 	var cables []Cable
 	err := c.Call("list_cables", fields, &cables)
 	return cables, err
+}
+
+// BatchResult is one entry of a batch response: the reply the command would
+// have got had it been sent on its own.
+type BatchResult struct {
+	OK     bool            `json:"ok"`
+	Result json.RawMessage `json:"result"`
+	Error  string          `json:"error"`
+}
+
+// BatchResponse is the result of the batch command: Count commands ran, of
+// which Failed returned an error, and Stopped (when not nil) is the index of
+// the one that ended the batch early.
+type BatchResponse struct {
+	Count   int           `json:"count"`
+	Failed  int           `json:"failed"`
+	Stopped *int          `json:"stopped"`
+	Results []BatchResult `json:"results"`
+}
+
+// Batch runs a sequence of requests in one round trip (protocol 2). Each is
+// an ordinary command object, {"cmd": "...", ...}. With stopOnError the batch
+// stops at the first failure; whatever ran before it stands, nothing is
+// rolled back.
+func (c *Client) Batch(cmds []map[string]any, stopOnError bool) (*BatchResponse, error) {
+	var out BatchResponse
+	err := c.Call("batch", map[string]any{
+		"commands":    cmds,
+		"stopOnError": stopOnError,
+	}, &out)
+	return &out, err
 }
 
 // ResolveModuleID resolves a decimal id prefix to a unique module id.
