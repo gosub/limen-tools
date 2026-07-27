@@ -6,9 +6,10 @@ the TCP+JSON control interface module for VCV Rack from the
 
 The limen module runs a small TCP server inside Rack (loopback only,
 `localhost:7000` by default) speaking a newline-delimited JSON protocol, so
-external tools can drive Rack: list/add/remove modules and cables, get/set
-parameters, query module metadata, and control the window (fullscreen,
-zoom-to-fit, quit). See the
+external tools can drive Rack: list/add/remove modules and cables, place and
+move them on the rack grid, get/set parameters, query module metadata, save
+the patch, run whole sequences of commands in one round trip, and control the
+window (fullscreen, zoom-to-fit, quit). See the
 [module documentation](https://github.com/gosub/forsitan-modulare/blob/master-v2/doc/limen.md)
 for the full protocol reference.
 
@@ -32,19 +33,24 @@ install with `go install github.com/gosub/limen-tools/cmd/limen-cli@latest`.
 ## Compatibility
 
 The wire protocol is versioned by a single integer, reported by the `hello`
-command and bumped only on breaking changes (new commands and new response
-fields do not bump it). Every client in this repo (since v1.1.0) checks
-it when it connects and refuses to talk to a server speaking a different
-version, with an error saying which side to update.
+command. Every client in this repo (since v1.1.0) checks it when it connects
+and refuses to talk to a server whose version it does not speak, with an error
+saying which side to update.
 
 | limen-tools | limen protocol | forsitan modulare |
 |-------------|----------------|-------------------|
-| v1.x        | 1              | ≥ 2.6.15          |
+| v1.0 – v1.1 | 1              | ≥ 2.6.15          |
+| v1.2+       | 1 – 2          | ≥ 2.6.15          |
 
-Every forsitan release since 2.3.1 speaks protocol 1, including the
-current 2.7.0. Releases 2.3.1 – 2.6.14 predate the `get_module_info`
-command used by `limen-cli info` and the MCP `get_module_info` tool;
-everything else works with them too.
+Protocol 2 added module positions, `save_patch` / `save_patch_as` and `batch`
+without changing anything that came before, so v1.2 clients talk to protocol 1
+servers too — the version 2 commands are simply answered with `unknown cmd`
+there, and `limen-cli modules` shows zeroes for `x`, `y` and `hp`. Every
+forsitan release from 2.3.1 to 2.13.0 speaks protocol 1; releases
+2.3.1 – 2.6.14 also predate `get_module_info`.
+
+The reliable feature test is `hello`: its `commands` list is exactly what the
+running module supports.
 
 ## Quickstart
 
@@ -84,10 +90,14 @@ limen-cli [--port N] [--host H] [--json] <command> [args]
 | `param <module-id> <param-id>` | get a single parameter value |
 | `set <module-id> <param-id> <value>` | set a parameter value |
 | `cables [-v] [<module-id>]` | list cables; `-v` adds module and port names |
-| `add <plugin-slug> <model-slug>` | add a module, prints its id |
+| `add <plugin-slug> <model-slug> [<x> <y> [mode]]` | add a module, at a grid position if given, prints its id |
 | `rm <module-id>` | remove a module |
+| `move <module-id> <x> <y> [mode]` | move a module, prints where it landed |
 | `connect <out-mod>:<out-port> <in-mod>:<in-port>` | connect two ports, prints cable id |
 | `disconnect <cable-id>` | remove a cable |
+| `save [<path>]` | save the patch to its own file, or a copy at `path` |
+| `saveas <path>` | save the patch and adopt `path` as its file |
+| `batch [-k] [<file>]` | run one JSON request per line as a single batch |
 | `fullscreen on\|off` | enter or leave fullscreen |
 | `zoom` | zoom/center the view to fit all modules (F4) |
 | `quit` | quit VCV Rack |
@@ -95,18 +105,40 @@ limen-cli [--port N] [--host H] [--json] <command> [args]
 Module IDs and cable IDs can be given as unique prefixes instead of the full
 number. `--json` prints the raw JSON response (pipe to `jq`).
 
+Positions are Rack grid coordinates: `x` counts HP columns, `y` counts rows.
+`mode` says what to do when the spot is taken — `nearest` (the default, moves
+to the closest free one), `force` (pushes the row aside), `squeeze`, or
+`strict` (fails instead). `modules` prints each module's `x`, `y` and `hp`, so
+`x + hp` is where the next one in the row goes.
+
 A patch built from the terminal:
 
 ```bash
-VCO=$(limen-cli add Fundamental VCO)
-VCA=$(limen-cli add Fundamental VCA)
-OUT=$(limen-cli add Core AudioInterface2)
+VCO=$(limen-cli add Fundamental VCO 0 0)
+VCA=$(limen-cli add Fundamental VCA 10 0)
+OUT=$(limen-cli add Core AudioInterface2 16 0)
 limen-cli ports $VCA                 # find port indices; 2 = channel 1 audio in
 limen-cli connect $VCO:0 $VCA:2      # sine → VCA channel 1 in
 limen-cli connect $VCA:0 $OUT:0      # VCA channel 1 → audio out L
 limen-cli set $VCO 2 -12             # frequency param down an octave
 limen-cli zoom
+limen-cli saveas ~/patches/from-the-terminal.vcv
 ```
+
+The same in one round trip, from a batch file:
+
+```bash
+cat > patch.jsonl <<'EOF'
+# one request per line; blank lines and # comments are skipped
+{"cmd": "add_module", "plugin": "Fundamental", "model": "VCO", "x": 0, "y": 0}
+{"cmd": "add_module", "plugin": "Fundamental", "model": "VCA", "x": 10, "y": 0}
+EOF
+limen-cli batch patch.jsonl
+```
+
+`batch` stops at the first failing command and exits nonzero; `-k` runs the
+rest anyway. Either way the commands that already ran stand, nothing is
+rolled back.
 
 ## limen-mcp
 
@@ -138,9 +170,10 @@ or in a `.mcp.json` / Claude Desktop config:
 ```
 
 Then ask the model to look at the rack: it gets `list_modules`,
-`list_ports`, `set_param`, `add_cable` and the rest as typed tools. Each
-tool call opens its own short-lived TCP connection, so the single-client
-limen server stays free between calls.
+`list_ports`, `set_param`, `add_cable`, `move_module`, `save_patch` and the
+rest as typed tools, plus `batch` for building a patch in one call. Each tool
+call opens its own short-lived TCP connection, so the single-client limen
+server stays free between calls.
 
 ## Go library
 
@@ -170,10 +203,11 @@ from limen import Limen
 
 with Limen() as rack:                    # Limen(host=..., port=...)
     print(rack.hello())
-    vco = rack.add_module("Fundamental", "VCO")
+    vco = rack.add_module("Fundamental", "VCO", x=0, y=0)
     rack.set_param(vco, 2, -12.0)        # module, param id, value
     for m in rack.list_modules():
-        print(m["id"], m["name"])
+        print(m["id"], m["name"], m["pos"], m["hp"])
+    rack.save_patch_as("/tmp/from-python.vcv")
 ```
 
 One method per protocol command (`list_modules`, `get_module_info`,
