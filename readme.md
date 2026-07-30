@@ -39,14 +39,15 @@ saying which side to update.
 
 | limen-tools | limen protocol | forsitan modulare |
 |-------------|----------------|-------------------|
-| v1.0 – v1.1 | 1              | ≥ 2.6.15          |
+| v1.0 – v1.1 | 1              | 2.6.15 – 2.13.0   |
 | v1.2+       | 1 – 2          | ≥ 2.6.15          |
 
-Protocol 2 added module positions, `save_patch` / `save_patch_as` and `batch`
-without changing anything that came before, so v1.2 clients talk to protocol 1
-servers too — the version 2 commands are simply answered with `unknown cmd`
-there, and `limen-cli modules` shows zeroes for `x`, `y` and `hp`. Every
-forsitan release from 2.3.1 to 2.13.0 speaks protocol 1; releases
+Protocol 2 arrived in forsitan **2.13.1**. It added module positions,
+`save_patch` / `save_patch_as` and `batch` without changing anything that came
+before, so v1.2 clients talk to protocol 1 servers too: the version 2 commands
+are simply answered with `unknown cmd` there, and `limen-cli modules` shows
+zeroes for `x`, `y` and `hp`. Forsitan releases 2.3.1 to 2.13.0 speak protocol
+1, and a v1.0 – v1.1 client refuses to talk to a 2.13.1 or newer one; releases
 2.3.1 – 2.6.14 also predate `get_module_info`.
 
 The reliable feature test is `hello`: its `commands` list is exactly what the
