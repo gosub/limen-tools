@@ -59,7 +59,7 @@ hold a connection open while another tool needs to talk to it.
 | `remove_module` | `id` | `null` |
 | `move_module` | `id`, `x`, `y`, `mode` (opt.) | `{id, pos: {x, y}}` |
 | `list_cables` | `id` (opt.), `verbose` (opt.) | `[{id, outputModule, outputPort, inputModule, inputPort, …names if verbose}]` |
-| `add_cable` | `outputModule`, `outputPort`, `inputModule`, `inputPort` | `{id}` |
+| `add_cable` | `outputModule`, `outputPort`, `inputModule`, `inputPort`, `color` (opt.) | `{id}` |
 | `remove_cable` | `id` | `null` |
 | `save_patch` | `path` (opt.) | `{path}` |
 | `save_patch_as` | `path` | `{path}` |
@@ -96,7 +96,12 @@ indices, they differ per module.
 piling up (returns the new id, position and width), `list_ports` on both ends,
 then `add_cable` output→input. Signal convention: audio/CV flows from a
 module's *output* port to another's *input* port; `outputPort`/`inputPort` are
-the indices from `list_ports`. Set parameters last, respecting each param's
+the indices from `list_ports`. An input can take several cables (Rack 2.5
+and later), and their voltages are summed, so check `list_cables` before
+patching into an occupied input unless a sum is what you want. `color`
+(`"#rrggbb"` or `"#rrggbbaa"`) sets the cable's colour, for a patch that
+colour-codes its cables; without it the cable takes Rack's next colour, and
+limen before forsitan 2.17.1 ignores it. Set parameters last, respecting each param's
 `min`/`max` from `list_params`.
 
 **Batch the building.** Once the slugs and port indices are known, send the
