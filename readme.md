@@ -94,7 +94,7 @@ limen-cli [--port N] [--host H] [--json] <command> [args]
 | `add <plugin-slug> <model-slug> [<x> <y> [mode]]` | add a module, at a grid position if given, prints its id |
 | `rm <module-id>` | remove a module |
 | `move <module-id> <x> <y> [mode]` | move a module, prints where it landed |
-| `connect <out-mod>:<out-port> <in-mod>:<in-port>` | connect two ports, prints cable id |
+| `connect <out-mod>:<out-port> <in-mod>:<in-port> [#rrggbb]` | connect two ports, prints cable id; the colour (`#rrggbb` or `#rrggbbaa`, quote it in the shell) needs forsitan 2.17.1 |
 | `disconnect <cable-id>` | remove a cable |
 | `save [<path>]` | save the patch to its own file, or a copy at `path` |
 | `saveas <path>` | save the patch and adopt `path` as its file |

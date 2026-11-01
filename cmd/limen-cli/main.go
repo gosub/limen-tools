@@ -36,7 +36,7 @@ commands:
   add <plugin-slug> <model-slug> [<x> <y> [mode]]  add a module, at a grid position if given
   rm <module-id>                               remove a module from the patch
   move <module-id> <x> <y> [mode]              move a module to grid column x, row y
-  connect <out-mod>:<out-port> <in-mod>:<in-port>  connect two ports
+  connect <out-mod>:<out-port> <in-mod>:<in-port> [#rrggbb]  connect two ports, opt. cable colour
   disconnect <cable-id>                        remove a cable
   save [<path>]                                save the patch (to its own file, or a copy)
   saveas <path>                                save the patch and adopt that path
@@ -583,10 +583,14 @@ donetc:
 		}
 		outMod, outPort := parseEndpoint(c, args[0])
 		inMod, inPort := parseEndpoint(c, args[1])
-		printResultID(call(c, "add_cable", map[string]any{
+		fields := map[string]any{
 			"outputModule": outMod, "outputPort": outPort,
 			"inputModule": inMod, "inputPort": inPort,
-		}))
+		}
+		if len(args) >= 3 {
+			fields["color"] = args[2]
+		}
+		printResultID(call(c, "add_cable", fields))
 	case "disconnect":
 		if len(args) < 1 {
 			die("disconnect requires cable-id")
