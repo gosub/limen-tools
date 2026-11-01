@@ -191,11 +191,18 @@ class Limen:
             fields["verbose"] = True
         return self.call("list_cables", **fields)
 
-    def add_cable(self, output_module, output_port, input_module, input_port):
-        """Connect an output port to an input port; returns the cable id."""
-        return self.call("add_cable",
-                         outputModule=output_module, outputPort=output_port,
-                         inputModule=input_module, inputPort=input_port)["id"]
+    def add_cable(self, output_module, output_port, input_module, input_port,
+                  color=None):
+        """Connect an output port to an input port; returns the cable id.
+
+        color is "#rrggbb" or "#rrggbbaa"; without it the cable takes the
+        next colour in Rack's rotation. Needs forsitan 2.17.1, older
+        versions ignore it."""
+        fields = dict(outputModule=output_module, outputPort=output_port,
+                      inputModule=input_module, inputPort=input_port)
+        if color is not None:
+            fields["color"] = color
+        return self.call("add_cable", **fields)["id"]
 
     def remove_cable(self, cable_id):
         """Remove a cable from the patch."""
