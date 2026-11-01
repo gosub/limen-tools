@@ -84,6 +84,11 @@ row aside), `squeeze`, or `strict` (fails with `position occupied` instead of
 landing elsewhere). Only `strict` guarantees the position, so read the `pos`
 in the reply rather than assuming.
 
+Avoid `squeeze` on limen before forsitan 2.17.2: it replayed the module
+positions of the user's last drag, so modules moved since landed on top of
+each other and one deleted since could crash Rack. Use `nearest` or `force`
+there; from 2.17.2 on `squeeze` is safe.
+
 ## Workflows
 
 **Orient first.** Before changing anything: `hello`, then `list_modules` to
