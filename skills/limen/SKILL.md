@@ -53,8 +53,8 @@ hold a connection open while another tool needs to talk to it.
 | `get_module_info` | `id` | `{model: {description, tags, urls…}, plugin: {brand, version, license, author, urls…}}` |
 | `list_ports` | `id` | `{inputs: [{id, name}], outputs: [{id, name}]}` |
 | `list_params` | `id` | `[{id, value, name, min, max, unit}]` |
-| `get_param` | `id`, `param` | `{id, value, name, min, max, unit}` |
-| `set_param` | `id`, `param`, `value` | `null` |
+| `get_param` | `id`, `param` (index or name) | `{id, value, name, min, max, unit}` |
+| `set_param` | `id`, `param` (index or name), `value` | `{id, value, name, min, max, unit}` (`null` before forsitan 2.17.4) |
 | `add_module` | `plugin`, `model`, `x`, `y`, `mode` (opt.) | `{id, pos: {x, y}, hp}` |
 | `remove_module` | `id` | `null` |
 | `move_module` | `id`, `x`, `y`, `mode` (opt.) | `{id, pos: {x, y}}` |
@@ -108,6 +108,15 @@ patching into an occupied input unless a sum is what you want. `color`
 colour-codes its cables; without it the cable takes Rack's next colour, and
 limen before forsitan 2.17.1 ignores it. Set parameters last, respecting each param's
 `min`/`max` from `list_params`.
+
+**Params by name.** From forsitan 2.17.4, `get_param` and `set_param` take
+the param's name as `list_params` shows it (`"param": "Frequency"`) as well as
+its index. A name is matched exactly, then ignoring case; a name several
+params share, such as the empty name of unlabelled switches, is an error that
+lists their indices, so use the index there. `set_param` clamps the value to
+`min`/`max`, rounds it on a stepped control, and replies with the param after
+the change: read `value` in the reply rather than assuming yours was applied.
+Before 2.17.4 only the index works and the value is applied unclamped.
 
 **Batch the building.** Once the slugs and port indices are known, send the
 adds, cables and parameter sets as one `batch` instead of a request each: one
