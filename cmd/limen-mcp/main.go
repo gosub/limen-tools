@@ -19,7 +19,7 @@ import (
 	"github.com/gosub/limen-tools/limen"
 )
 
-const serverVersion = "1.2.1"
+const serverVersion = "1.3.0"
 
 var (
 	optHost string
