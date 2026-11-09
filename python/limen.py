@@ -140,13 +140,20 @@ class Limen:
         """Params for a module: [{id, value, name, min, max, unit}]."""
         return self.call("list_params", id=module_id)
 
-    def get_param(self, module_id, param_id):
-        """One parameter's current value and metadata."""
-        return self.call("get_param", id=module_id, param=param_id)
+    def get_param(self, module_id, param):
+        """One parameter's current value and metadata.
 
-    def set_param(self, module_id, param_id, value):
-        """Set a parameter value."""
-        return self.call("set_param", id=module_id, param=param_id,
+        param is the index or the name list_params shows (names need
+        forsitan 2.17.4)."""
+        return self.call("get_param", id=module_id, param=param)
+
+    def set_param(self, module_id, param, value):
+        """Set a parameter value; param is the index or the name.
+
+        From forsitan 2.17.4 the value is clamped to the param's range and
+        rounded on a stepped control, and the param after the change is
+        returned (older versions return None)."""
+        return self.call("set_param", id=module_id, param=param,
                          value=float(value))
 
     def add_module(self, plugin, model, x=None, y=None, mode=None):
