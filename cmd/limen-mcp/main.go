@@ -33,7 +33,9 @@ var (
 // ── tool table ───────────────────────────────────────────────────────────────
 
 type property struct {
-	Type        string `json:"type"`
+	// Type is a JSON Schema type name, or a list of them for a property
+	// that takes more than one (a param by index or by name).
+	Type        any    `json:"type"`
 	Description string `json:"description"`
 	// Items describes an array property's elements; empty for other types.
 	Items map[string]any `json:"items,omitempty"`
@@ -57,7 +59,7 @@ func p(typ, description string) property {
 
 var (
 	propID     = p("integer", "module id (from list_modules)")
-	propParam  = p("integer", "parameter id (from list_params)")
+	propParam  = property{Type: []string{"integer", "string"}, Description: "the parameter: its index or its name, as list_params shows them. A name is matched exactly, then ignoring case; one that several params share is an error, so use the index there. Names need forsitan 2.17.4, older versions take only the index"}
 	propPlugin = p("string", "plugin slug")
 	propModel  = p("string", "model slug")
 	propX      = p("integer", "grid column in HP, counted from Rack's origin")
@@ -84,8 +86,8 @@ var tools = []tool{
 	{"get_module_info", "Get a module's full metadata as shown in Rack's right-click Info menu: description, tags, and the plugin's brand, version, license, author and links.", s(map[string]property{"id": propID}, "id")},
 	{"list_ports", "List a module's input and output port names with their indices. Needed before add_cable.", s(map[string]property{"id": propID}, "id")},
 	{"list_params", "List a module's parameters: id, current value, name, min, max, unit.", s(map[string]property{"id": propID}, "id")},
-	{"get_param", "Get one parameter's current value and metadata.", s(map[string]property{"id": propID, "param": propParam}, "id", "param")},
-	{"set_param", "Set a parameter value (clamped to the parameter's range by Rack).", s(map[string]property{"id": propID, "param": propParam, "value": p("number", "new value, within the param's min/max")}, "id", "param", "value")},
+	{"get_param", "Get one parameter's current value and metadata, by index or by name.", s(map[string]property{"id": propID, "param": propParam}, "id", "param")},
+	{"set_param", "Set a parameter value, by param index or name. From forsitan 2.17.4 the value is clamped to the param's min/max and rounded on a stepped control, and the reply is the param after the change, so check its value; older versions apply it unclamped and reply null.", s(map[string]property{"id": propID, "param": propParam, "value": p("number", "new value, within the param's min/max")}, "id", "param", "value")},
 	{"add_module", "Add a module to the patch; returns its id, grid position and width in HP. Give x and y to place it (a row is laid out by adding each module's hp to x); without them it lands next to an existing module.", s(map[string]property{"plugin": propPlugin, "model": propModel, "x": propX, "y": propY, "mode": propMode}, "plugin", "model")},
 	{"remove_module", "Remove a module from the patch.", s(map[string]property{"id": propID}, "id")},
 	{"move_module", "Move a module to a grid position; returns the position it actually reached, which differs from the one asked for unless mode is strict.", s(map[string]property{"id": propID, "x": propX, "y": propY, "mode": propMode}, "id", "x", "y")},
