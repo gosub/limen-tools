@@ -29,8 +29,8 @@ commands:
   cables [-v] [<module-id>]                    list cables (opt. module filter, -v for names)
   ports <module-id>                            list input/output port names
   params <module-id>                           list params for a module
-  param <module-id> <param-id>                 get a single parameter value
-  set <module-id> <param-id> <value>           set a parameter value
+  param <module-id> <param>                    get a parameter, by index or name
+  set <module-id> <param> <value>              set a parameter, by index or name
   get <module-id>                              get module detail
   info <module-id>                             module info (description, tags, plugin, links)
   add <plugin-slug> <model-slug> [<x> <y> [mode]]  add a module, at a grid position if given
@@ -294,11 +294,34 @@ func cmdParams(c *limen.Client, id int64) {
 	}
 }
 
-func cmdParam(c *limen.Client, id int64, paramID int) {
-	var p param
-	decode(call(c, "get_param", map[string]any{"id": id, "param": paramID}), &p)
+// paramArg reads a param argument: a number is an index, anything else a
+// name, matched by limen as list_params shows it.
+func paramArg(s string) any {
+	if i, err := strconv.Atoi(s); err == nil {
+		return i
+	}
+	return s
+}
+
+func cmdParam(c *limen.Client, id int64, p any) {
+	var r param
+	decode(call(c, "get_param", map[string]any{"id": id, "param": p}), &r)
 	printParamHeader()
-	printParam(p)
+	printParam(r)
+}
+
+// cmdSet prints the param after the change, so a clamped or rounded value
+// shows. A limen older than forsitan 2.17.4 replies null: print "ok" then.
+func cmdSet(c *limen.Client, id int64, p any, value float64) {
+	res := call(c, "set_param", map[string]any{"id": id, "param": p, "value": value})
+	if string(res) == "null" || len(res) == 0 {
+		fmt.Println("ok")
+		return
+	}
+	var r param
+	decode(res, &r)
+	printParamHeader()
+	printParam(r)
 }
 
 func cmdCables(c *limen.Client, moduleID int64, verbose bool) {
@@ -524,29 +547,20 @@ donetc:
 		}
 	case "param":
 		if len(args) < 2 {
-			die("param requires module-id param-id")
+			die("param requires module-id param")
 		}
 		id := resolveModule(c, args[0])
-		paramID, err := strconv.Atoi(args[1])
-		if err != nil {
-			die("invalid param-id: %s", args[1])
-		}
-		cmdParam(c, id, paramID)
+		cmdParam(c, id, paramArg(args[1]))
 	case "set":
 		if len(args) < 3 {
-			die("set requires module-id param-id value")
+			die("set requires module-id param value")
 		}
 		id := resolveModule(c, args[0])
-		paramID, err := strconv.Atoi(args[1])
-		if err != nil {
-			die("invalid param-id: %s", args[1])
-		}
 		value, err := strconv.ParseFloat(args[2], 64)
 		if err != nil {
 			die("invalid value: %s", args[2])
 		}
-		call(c, "set_param", map[string]any{"id": id, "param": paramID, "value": value})
-		fmt.Println("ok")
+		cmdSet(c, id, paramArg(args[1]), value)
 	case "cables":
 		verbose := false
 		moduleID := int64(-1)

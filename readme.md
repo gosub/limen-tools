@@ -88,8 +88,8 @@ limen-cli [--port N] [--host H] [--json] <command> [args]
 | `info <module-id>` | module info: description, tags, plugin, version, license, links |
 | `ports <module-id>` | list input/output port names |
 | `params <module-id>` | list params for a module |
-| `param <module-id> <param-id>` | get a single parameter value |
-| `set <module-id> <param-id> <value>` | set a parameter value |
+| `param <module-id> <param>` | get a parameter, by index or by name (names need forsitan 2.17.4) |
+| `set <module-id> <param> <value>` | set a parameter, by index or by name; prints the value applied, clamped and rounded from forsitan 2.17.4 |
 | `cables [-v] [<module-id>]` | list cables; `-v` adds module and port names |
 | `add <plugin-slug> <model-slug> [<x> <y> [mode]]` | add a module, at a grid position if given, prints its id |
 | `rm <module-id>` | remove a module |
